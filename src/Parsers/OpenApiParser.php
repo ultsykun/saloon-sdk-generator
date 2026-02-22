@@ -12,46 +12,89 @@ use cebe\openapi\spec\PathItem;
 use cebe\openapi\spec\Paths;
 use cebe\openapi\spec\Reference;
 use cebe\openapi\spec\RequestBody;
-use cebe\openapi\spec\SecurityRequirement;
+use cebe\openapi\spec\Response;
+use cebe\openapi\spec\Schema;
 use cebe\openapi\spec\Server;
 use cebe\openapi\spec\Type;
 use Crescat\SaloonSdkGenerator\Contracts\Parser;
 use Crescat\SaloonSdkGenerator\Data\Generator\ApiKeyLocation;
 use Crescat\SaloonSdkGenerator\Data\Generator\ApiSpecification;
 use Crescat\SaloonSdkGenerator\Data\Generator\BaseUrl;
+use Crescat\SaloonSdkGenerator\Data\Generator\Config;
 use Crescat\SaloonSdkGenerator\Data\Generator\Endpoint;
 use Crescat\SaloonSdkGenerator\Data\Generator\Method;
 use Crescat\SaloonSdkGenerator\Data\Generator\Parameter;
 use Crescat\SaloonSdkGenerator\Data\Generator\SecurityScheme;
 use Crescat\SaloonSdkGenerator\Data\Generator\SecuritySchemeType;
 use Crescat\SaloonSdkGenerator\Data\Generator\ServerParameter;
+use Crescat\SaloonSdkGenerator\Helpers\BodySchemaNameGenerator;
+use Crescat\SaloonSdkGenerator\Helpers\NameHelper;
 use Illuminate\Support\Str;
 use Throwable;
 
 class OpenApiParser implements Parser
 {
-    public function __construct(protected OpenApi $openApi) {}
+    /** @var Schema[]|Reference[]  */
+    protected array $bodySchemas = [];
 
-    public static function build($content): self
+    protected ?BodySchemaNameGenerator $bodySchemaNameGenerator = null;
+
+    public function __construct(
+        protected OpenApi $openApi,
+        protected Config $config,
+    ) {
+    }
+
+    public static function build($content, Config $config): self
     {
-        return new self(
-            Str::endsWith($content, '.json')
-                ? Reader::readFromJsonFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE)
-                : Reader::readFromYamlFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE)
-        );
+        $openApi = Str::endsWith($content, '.json')
+            ? Reader::readFromJsonFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE)
+            : Reader::readFromYamlFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE);
+
+        return new self($openApi, $config);
     }
 
     public function parse(): ApiSpecification
     {
+        $this->bodySchemas = [];
+
+        $existingNames =  array_keys($this->openApi->components?->schemas ?? []);
+        $this->bodySchemaNameGenerator = new BodySchemaNameGenerator($existingNames);
+
+        $endpoints = $this->parseItems($this->openApi->paths);
 
         return new ApiSpecification(
             name: $this->openApi->info->title,
             description: $this->openApi->info->description,
             baseUrl: $this->parseBaseUrl($this->openApi->servers),
-            securityRequirements: $this->openApi->security !== null ? $this->parseSecurityRequirements($this->openApi->security->getSerializableData()) : [],
+            securityRequirements: $this->openApi->security !== null ? $this->parseSecurityRequirements(($this->openApi->security[0] ?? null)?->getSerializableData()) : [],
+            endpoints: $endpoints,
             components: $this->parseComponents($this->openApi->components),
-            endpoints: $this->parseItems($this->openApi->paths)
+            moduleName: $this->parseModuleName(),
         );
+    }
+
+    protected function parseModuleName(): ?string
+    {
+        $title = $this->openApi->info->title;
+        $tag = $this->openApi->tags[0] ?? null;
+
+        $title = $tag->name ?? $title;
+
+        if (empty($title)) {
+            return null;
+        }
+
+        $pathSegments = preg_split('/\s+/', $title);
+
+        $pathSegments = array_values(array_filter($pathSegments, fn ($s) => !preg_match('/^[:{]|^id|^code|^api|^sdk|^clould|^service|^micro|^module/i', (string) $s) ));
+        $pathSegments = array_slice($pathSegments, 0, 3);
+
+        if (empty($pathSegments)) {
+            return null;
+        }
+
+        return NameHelper::safeClassName(implode(array_map('ucfirst', $pathSegments)), 'Sdk');
     }
 
     /**
@@ -139,7 +182,9 @@ class OpenApiParser implements Parser
     protected function parseComponents(?Components $components): \Crescat\SaloonSdkGenerator\Data\Generator\Components
     {
         if (! $components) {
-            return new \Crescat\SaloonSdkGenerator\Data\Generator\Components;
+            return new \Crescat\SaloonSdkGenerator\Data\Generator\Components(
+                schemas: $this->bodySchemas
+            );
         }
 
         $securitySchemes = [];
@@ -157,82 +202,211 @@ class OpenApiParser implements Parser
             );
         }
 
+        $componentSchemas = is_array($components->schemas) ? $components->schemas : (array) $components->schemas;
+        $schemas = array_merge($componentSchemas, $this->bodySchemas);
+
         return new \Crescat\SaloonSdkGenerator\Data\Generator\Components(
-            schemas: $components->schemas,
+            schemas: $schemas,
             securitySchemes: $securitySchemes
         );
     }
 
     protected function parseEndpoint(Operation $operation, $pathParams, string $path, string $method): ?Endpoint
     {
+        $pathSegments = Str::of($path)->replace('{', ':')->remove('}')->trim('/')->explode('/')->toArray();
 
         return new Endpoint(
             name: trim($operation->operationId ?: $operation->summary ?: ''),
             method: Method::parse($method),
-            pathSegments: Str::of($path)->replace('{', ':')->remove('}')->trim('/')->explode('/')->toArray(),
+            pathSegments: $pathSegments,
             collection: $operation->tags[0] ?? null, // In the real-world, people USUALLY only use one tag...
-            response: null, // TODO: implement "definition" parsing
+            response: null,
+            responseSchemaName: $this->parseSuccessResponseSchemaName($operation),
             description: $operation->description,
             queryParameters: $this->mapParams($operation->parameters ?? [], 'query'),
             // TODO: Check if this differs between spec versions
             pathParameters: $pathParams + $this->mapParams($operation->parameters ?? [], 'path'),
-            bodyParameters: [], // TODO: implement "definition" parsing
+            bodyParameters: $this->parseRequestBody($operation->requestBody, $pathSegments, $method),
             headerParameters: $this->mapParams($operation->parameters ?? [], 'header'),
         );
     }
 
-    protected function parseRequestBody(RequestBody|Reference|null $requestBody): ?array
+    protected function selectContentType(array $contentKeys): ?string
     {
+        $format = $this->config->format ?? 'json';
+        $format = strtolower(trim($format));
 
+
+        foreach ($contentKeys as $key) {
+            $keyLower = strtolower((string) $key);
+
+            $part1 = explode(';', $keyLower)[0] ?? $keyLower;
+            $part2 = explode('/', $keyLower, 2)[0] ?? $keyLower;
+
+            if ($keyLower === $format || $part1 === $format || $part2 === $format) {
+                return $key;
+            }
+        }
+
+        // Default: first json-like
+        foreach ($contentKeys as $key) {
+            if (str_contains(strtolower((string) $key), 'json')) {
+                return $key;
+            }
+        }
+
+        return $contentKeys[0] ?? null;
+    }
+
+    /**
+     * Extract schema name from a Reference (e.g. "#/components/schemas/billingPayment" => "billingPayment").
+     */
+    protected function getSchemaNameFromRef(Reference $ref): string
+    {
+        $refPath = $ref->getReference();
+
+        return Str::afterLast($refPath, '/');
+    }
+
+    /**
+     * @return Parameter[]
+     */
+    protected function parseRequestBody(RequestBody|Reference|null $requestBody, array $pathSegments, string $method): array
+    {
         if (! $requestBody) {
             return [];
         }
 
-        $bodyParameters = [];
-
-        // Assume that the requestBody content is of type 'application/json'
-        $content = $requestBody->content['application/json'] ?? null;
-
-        try {
-
-            if ($requestBody instanceof Reference) {
-                $requestBody = $requestBody->resolveReferences();
-            }
-
-            // Resolve schema if it's a reference
-            $schema = $content?->schema;
-            if ($schema instanceof Reference) {
-                try {
-                    $schema = $schema->resolve();
-                } catch (Throwable) {
-                    $schema = null;
-                }
-            }
-
-            if ($content && $schema?->type != null) {
-                foreach ($schema->properties as $name => $property) {
-                    // Resolve property if it's a reference
-                    if ($property instanceof Reference) {
-                        try {
-                            $property = $property->resolve();
-                        } catch (Throwable) {
-                            continue;
-                        }
-                    }
-
-                    $bodyParameters[] = new Parameter(
-                        type: $this->mapSchemaTypeToPhpType($property->type ?? null),
-                        nullable: $property->nullable ?? false,
-                        name: $name,
-                        description: $property->description ?? ''
-                    );
-                }
-            }
-        } catch (Throwable) {
+        if ($requestBody instanceof Reference) {
+            // todo: fix it
             return [];
         }
 
-        return $bodyParameters;
+        if (! $requestBody instanceof RequestBody || empty($requestBody->content)) {
+            return [];
+        }
+
+        $contentKeys = array_keys($requestBody->content);
+        $selectedContentType = $this->selectContentType($contentKeys);
+        if ($selectedContentType === null) {
+            return [];
+        }
+
+        $mediaType = $requestBody->content[$selectedContentType];
+        $schema = $mediaType->schema ?? null;
+        if (! $schema) {
+            return [];
+        }
+
+        $required = $requestBody->required ?? false;
+
+        // Schema is a Reference (e.g. $ref or allOf with single $ref)
+        $refSchemaName = $this->resolveRefSchemaName($schema);
+        if ($refSchemaName !== null) {
+            $dtoType = NameHelper::dtoClassName(NameHelper::safeClassName($refSchemaName));
+
+            return [
+                new Parameter(
+                    type: $dtoType,
+                    nullable: ! $required,
+                    name: $refSchemaName,
+                    description: $requestBody->description ?? '',
+                    format: $selectedContentType,
+                    isDto: true,
+                ),
+            ];
+        }
+
+        // Inline schema (type: object with properties) -> add to bodySchemas and one Parameter
+        if ($schema instanceof Schema && ($schema->type === 'object' || isset($schema->properties)) && ! empty($schema->properties ?? [])) {
+            $schemaName = $this->bodySchemaNameGenerator->generate($pathSegments, $method);
+            $this->bodySchemas[$schemaName] = $schema;
+
+            $dtoType = NameHelper::dtoClassName(NameHelper::safeClassName($schemaName));
+
+            return [
+                new Parameter(
+                    type: $dtoType,
+                    nullable: ! $required,
+                    name: $schemaName,
+                    description: $requestBody->description ?? '',
+                    format: $selectedContentType,
+                    isDto: true,
+                ),
+            ];
+        }
+
+
+        return [];
+    }
+
+    /**
+     * If schema is a Reference or allOf with single Reference, return the referenced schema name.
+     */
+    protected function resolveRefSchemaName(Schema|Reference|null $schema): ?string
+    {
+        if ($schema instanceof Reference) {
+            return $this->getSchemaNameFromRef($schema);
+        }
+        if ($schema instanceof Schema && ! empty($schema->allOf)) {
+            $first = $schema->allOf[0] ?? null;
+            if ($first instanceof Reference) {
+                return $this->getSchemaNameFromRef($first);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse success response (first 2xx) and return schema name for response content, or null if empty.
+     */
+    protected function parseSuccessResponseSchemaName(Operation $operation): ?string
+    {
+        $responses = $operation->responses ?? null;
+        if (! $responses) {
+            return null;
+        }
+
+        $getResponses = $responses->getResponses();
+        $successCodes = ['200', '201', '202', '204', 'default'];
+        $response = null;
+        foreach ($successCodes as $code) {
+            if (isset($getResponses[$code])) {
+                $response = $getResponses[$code];
+                break;
+            }
+        }
+
+        if (!$response) {
+            return null;
+        }
+
+        if ($response instanceof Reference) {
+            try {
+                $response = $response->resolve();
+            } catch (Throwable) {
+                return null;
+            }
+        }
+
+        if (! $response instanceof Response || empty($response->content)) {
+            return null;
+        }
+
+        $contentKeys = array_keys($response->content);
+        $selectedType = $this->selectContentType($contentKeys);
+        if ($selectedType === null) {
+            return null;
+        }
+
+        $mediaType = $response->content[$selectedType];
+        $schema = $mediaType->schema ?? null;
+        if (! $schema) {
+            return null;
+        }
+
+        return $this->resolveRefSchemaName($schema);
     }
 
     /**

@@ -8,21 +8,23 @@ use Crescat\SaloonSdkGenerator\Data\Generator\GeneratedCode;
 use Crescat\SaloonSdkGenerator\Exceptions\ParserNotRegisteredException;
 use Crescat\SaloonSdkGenerator\Factory;
 use Crescat\SaloonSdkGenerator\Generators\ComposerGenerator;
-use Crescat\SaloonSdkGenerator\Generators\PestTestGenerator;
 use Crescat\SaloonSdkGenerator\Helpers\Utils;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Nette\PhpGenerator\PhpFile;
+use Symfony\Component\Yaml\Yaml;
 use ZipArchive;
 
 class GenerateSdk extends Command
 {
     protected $signature = 'generate:sdk
                             {path : Path to the API specification file to generate the SDK from, must be a local file}
-                            {--type=postman : The type of API Specification (postman, openapi)}
-                            {--name=Unnamed : The name of the SDK}
-                            {--namespace=App\\Sdk : The root namespace of the SDK}
+                            {--type=openapi : The type of API Specification (postman, openapi)}
+                            {--name= : The model name of the SDK, default taken from tags or titles. Cashiering example}
+                            {--namespace=Azds\\Sdk : The root namespace of the SDK}
+                            {--composer-name= : The root composer namespace of the SDK,  example azds/vendor1 }
+                            {--config= : Config file config.yaml}
                             {--output=./build : The output path where the code will be created, will be created if it does not exist.}
                             {--force : Force overwriting existing files}
                             {--dry : Dry run, will only show the files to be generated, does not create or modify any files.}
@@ -44,30 +46,35 @@ class GenerateSdk extends Command
 
         $type = trim(strtolower($this->option('type')));
 
-        $generator = new CodeGenerator(
-            config: new Config(
-                connectorName: $this->option('name'),
-                namespace: $this->option('namespace'),
-                resourceNamespaceSuffix: 'Resource',
-                requestNamespaceSuffix: 'Requests',
-                dtoNamespaceSuffix: 'Dto',
-                ignoredQueryParams: [
-                    'after',
-                    'order_by',
-                    'per_page',
-                ]
-            ),
+        $configuration = array_merge(
+            $this->loadConfiguration('.saloon.yaml'),
+            $this->option('config') ? $this->loadConfiguration($this->option('config')) : [],
         );
 
-        if ($this->option('pest')) {
-            $generator->registerPostProcessor(new PestTestGenerator);
-        }
+        $config = new Config(
+            moduleName: $this->option('name') ?? ($configuration['name'] ?? null),
+            namespace: $this->option('namespace') ?? $configuration['namespace'],
+            composerName: $this->option('composer-name') ?? ($configuration['composerName'] ?? null),
+            resourceNamespaceSuffix: $configuration['resourceNamespaceSuffix'] ?? 'Resource',
+            requestNamespaceSuffix: $configuration['requestNamespaceSuffix'] ?? 'Requests',
+            dtoNamespaceSuffix: $configuration['dtoNamespaceSuffix'] ?? 'Dto',
+            ignoredQueryParams: $configuration['ignoredQueryParams'] ?? [],
+            ignoredBodyParams: $configuration['ignoredBodyParams'] ?? [],
+            ignoredHeaderParams: $configuration['ignoredHeaderParams'] ?? ['Authorization', 'Content-Type', 'Accept', 'User-Agent'],
+            generateGetters: $configuration['generateGetters'] ?? true,
+            generateSetters: $configuration['generateSetters'] ?? true,
+            publicPropVisibility: $configuration['publicPropVisibility'] ?? true,
+            format: $configuration['format'] ?? 'application/json',
+            overwritePropertiesType: $configuration['overwritePropertiesType'] ?? [],
+        );
+
+        $generator = new CodeGenerator(config: $config);
 
         // Always generate composer.json
-        $generator->registerPostProcessor(new ComposerGenerator($this->option('pest')));
+        $generator->registerPostProcessor(new ComposerGenerator());
 
         try {
-            $specification = Factory::parse($type, $inputPath);
+            $specification = Factory::parse($type, $inputPath, $config);
         } catch (ParserNotRegisteredException) {
             // TODO: Prettier errors using termwind
             $this->error("No parser registered for --type='$type'");
@@ -94,6 +101,27 @@ class GenerateSdk extends Command
             : $this->dumpGeneratedFiles($result);
     }
 
+    protected function loadConfiguration(?string $file): array
+    {
+        if (!$file) {
+            return [];
+        }
+
+        if (file_exists($file)) {
+            $data = file_get_contents($file);
+
+            if (!$data) {
+                return [];
+            }
+
+            $data = str_ends_with('.json', $file) ? json_decode($data) : Yaml::parse($data) ;
+
+            return is_array($data) ? $data : [];
+        }
+
+        return [];
+    }
+
     protected function printGeneratedFiles(GeneratedCode $result): void
     {
         $this->title('Generated Files');
@@ -116,13 +144,6 @@ class GenerateSdk extends Command
         $this->comment("\nDTOs:");
         foreach ($result->dtoClasses as $dtoClass) {
             $this->line(Utils::formatNamespaceAndClass($dtoClass));
-        }
-
-        if ($this->option('pest')) {
-            $this->comment("\nTests:");
-            foreach ($result->getWithTag('pest') as $test) {
-                $this->line(Utils::formatNamespaceAndClass($test));
-            }
         }
     }
 
@@ -148,34 +169,6 @@ class GenerateSdk extends Command
         $this->comment("\nDTOs:");
         foreach ($result->dtoClasses as $dtoClass) {
             $this->dumpToFile($dtoClass);
-        }
-
-        if ($this->option('pest')) {
-
-            $this->comment("\nTests:");
-            foreach ($result->getWithTag('pest') as $test) {
-                // TODO: Temporary Hacky workaround due to the way the PestTestGenerator works (not returning PhpFile)
-
-                $testFilePath = $this->option('output').'/'.$test->path;
-
-                if (! file_exists(dirname($testFilePath))) {
-                    mkdir(dirname($testFilePath), recursive: true);
-                }
-
-                if (file_exists($testFilePath) && ! $this->option('force')) {
-                    $this->warn("- File already exists: $testFilePath");
-
-                    return;
-                }
-
-                $ok = file_put_contents($testFilePath, $test->file);
-
-                if ($ok === false) {
-                    $this->error("- Failed to write: $testFilePath");
-                } else {
-                    $this->line("- Created: $testFilePath");
-                }
-            }
         }
 
         // Handle other additional files (composer.json, etc.) - excluding test files

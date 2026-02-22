@@ -13,7 +13,10 @@ class ApiSpecification
         public ?string $description,
         public ?BaseUrl $baseUrl,
         public array $securityRequirements = [],
-        public ?Components $components = null,
         public array $endpoints = [],
+        public ?Components $components = null,
+        /** @var array<string, string|null> */
+        public array $dtoClassesMap = [],
+        public ?string $moduleName = null,
     ) {}
 }

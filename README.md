@@ -1,9 +1,28 @@
-<p align="center"><img src=".github/header.png"></p>
-
 # Saloon SDK Generator - Simplified SDK Scaffolding 🚀
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/crescat-io/saloon-sdk-generator.svg?style=flat-square)](https://packagist.org/packages/crescat-io/saloon-sdk-generator)
 [![Total Downloads](https://img.shields.io/packagist/dt/crescat-io/saloon-sdk-generator.svg?style=flat-square)](https://packagist.org/packages/crescat-io/saloon-sdk-generator)
+
+
+## Quickly start
+
+```sh
+./codegen.phar generate:sdk stubs/book4time.json \
+     --force \
+     --type=openapi \
+     --config=config1.yaml \
+     --output ./build/book4time \
+     --namespace="Acme\\Book4Time"
+```
+
+```sh
+./codegen.phar generate:sdk oa3.json \
+   --force \
+   --type=openapi \
+   --config=config1.yaml \
+   --output ./build/oa2-sdk \
+   --namespace="Acme\\OhipApi"
+```
 
 Introducing the Saloon SDK Generator – your tool for quickly creating the basic structure of PHP SDKs using the
 powerful [Saloon](https://docs.saloon.dev/) package.

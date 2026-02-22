@@ -15,8 +15,8 @@ class GeneratedCode
      */
     public function __construct(
         public array $requestClasses = [],
-        public array $resourceClasses = [],
         public array $dtoClasses = [],
+        public array $resourceClasses = [],
         public ?PhpFile $connectorClass = null,
         public array $additionalFiles = [],
     ) {}

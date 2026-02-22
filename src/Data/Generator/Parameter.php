@@ -8,6 +8,10 @@ class Parameter
         public string $type,
         public bool $nullable,
         public string $name,
-        public ?string $description = null
-    ) {}
+        public ?string $description = null,
+        public ?string $format = null,
+        public ?bool $isDto = false,
+        public ?string $classFQN = null,
+    ) {
+    }
 }

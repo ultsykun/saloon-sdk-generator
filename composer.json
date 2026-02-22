@@ -14,7 +14,7 @@
         }
     ],
     "require": {
-        "php": "^8.2",
+        "php": "^8.1",
         "ext-zip": "*",
         "cebe/php-openapi": "^1.7",
         "guzzlehttp/guzzle": "^7.5",
@@ -91,11 +91,14 @@
         "preferred-install": "dist",
         "sort-packages": true,
         "optimize-autoloader": true,
+        "platform": {
+            "php": "8.1.29"
+        },
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
     },
-    "minimum-stability": "stable",
+    "minimum-stability": "dev",
     "prefer-stable": true,
     "bin": [
         "builds/sdkgenerator"

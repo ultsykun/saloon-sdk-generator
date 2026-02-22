@@ -22,13 +22,12 @@ class ComposerGenerator implements PostProcessor
         GeneratedCode $generatedCode,
     ): PhpFile|array|null {
         $composer = [
-            'name' => $this->generatePackageName($config),
+            'name' => $this->generatePackageName($config, $specification),
             'description' => "{$specification->name} SDK",
             'type' => 'library',
             'require' => [
-                'php' => '^8.1',
-                'saloonphp/saloon' => '^3.0',
-                'spatie/laravel-data' => '^3.0|^4.0',
+                'php' => '>=8.1',
+                'azds/data-transfer' => '*'
             ],
             'require-dev' => $this->getDevDependencies(),
             'autoload' => [
@@ -36,25 +35,7 @@ class ComposerGenerator implements PostProcessor
                     "{$config->namespace}\\" => 'src/',
                 ],
             ],
-            'scripts' => [
-                'test' => $this->pestEnabled ? 'vendor/bin/pest' : 'vendor/bin/phpunit',
-            ],
         ];
-
-        // Add test-specific configuration if Pest is enabled
-        if ($this->pestEnabled) {
-            $composer['autoload-dev'] = [
-                'psr-4' => [
-                    "{$config->namespace}\\Tests\\" => 'tests/',
-                ],
-            ];
-
-            $composer['config'] = [
-                'allow-plugins' => [
-                    'pestphp/pest-plugin' => true,
-                ],
-            ];
-        }
 
         $generatedCode->addAdditionalFile(
             new TaggedOutputFile(
@@ -67,13 +48,14 @@ class ComposerGenerator implements PostProcessor
         return [];
     }
 
-    protected function generatePackageName(Config $config): string
+    protected function generatePackageName(Config $config, ApiSpecification $specification): string
     {
         $namespaceParts = explode('\\', $config->namespace);
 
         // Normalize vendor and package names for Composer
         $vendor = $this->toComposerName(NameHelper::normalize($namespaceParts[0] ?? 'vendor'));
-        $package = $this->toComposerName(NameHelper::normalize($config->connectorName ?? 'sdk'));
+
+        $package = $this->toComposerName(NameHelper::normalize($config->moduleName ?? 'sdk'));
 
         return "{$vendor}/{$package}";
     }

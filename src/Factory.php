@@ -3,6 +3,7 @@
 namespace Crescat\SaloonSdkGenerator;
 
 use Crescat\SaloonSdkGenerator\Contracts\Parser;
+use Crescat\SaloonSdkGenerator\Data\Generator\Config;
 use Crescat\SaloonSdkGenerator\Data\Generator\ApiSpecification;
 use Crescat\SaloonSdkGenerator\Exceptions\ParserNotRegisteredException;
 use Crescat\SaloonSdkGenerator\Parsers\OpenApiParser;
@@ -36,14 +37,14 @@ class Factory
     /**
      * @throws ParserNotRegisteredException
      */
-    public static function createParser(string $type, mixed $input): ?Parser
+    public static function createParser(string $type, mixed $input, ?Config $config = null): Parser
     {
         if (isset(self::$registeredParsers[$type])) {
             $className = self::$registeredParsers[$type];
 
             // If required, call the "build" method that can accept anything and return an instance of the parser.
             if (method_exists($className, 'build')) {
-                return call_user_func([$className, 'build'], $input);
+                return $className::build($input, $config);
             }
 
             return new $className($input);
@@ -55,8 +56,8 @@ class Factory
     /**
      * @throws ParserNotRegisteredException
      */
-    public static function parse(string $type, mixed $input): ApiSpecification
+    public static function parse(string $type, mixed $input, ?Config $config = null): ApiSpecification
     {
-        return self::createParser($type, $input)->parse();
+        return self::createParser($type, $input, $config)->parse();
     }
 }

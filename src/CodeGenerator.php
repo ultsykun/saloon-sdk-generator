@@ -7,9 +7,7 @@ use Crescat\SaloonSdkGenerator\Contracts\PostProcessor;
 use Crescat\SaloonSdkGenerator\Data\Generator\ApiSpecification;
 use Crescat\SaloonSdkGenerator\Data\Generator\Config;
 use Crescat\SaloonSdkGenerator\Data\Generator\GeneratedCode;
-use Crescat\SaloonSdkGenerator\Generators\ConnectorGenerator;
 use Crescat\SaloonSdkGenerator\Generators\DtoGenerator;
-use Crescat\SaloonSdkGenerator\Generators\RequestGenerator;
 use Crescat\SaloonSdkGenerator\Generators\ResourceGenerator;
 use Illuminate\Support\Arr;
 use InvalidArgumentException;
@@ -30,10 +28,8 @@ class CodeGenerator
         ?array $postProcessors = [],
     ) {
         // Register default generators.
-        $this->requestGenerator ??= new RequestGenerator($config);
         $this->resourceGenerator ??= new ResourceGenerator($config);
         $this->dtoGenerator ??= new DtoGenerator($config);
-        $this->connectorGenerator ??= new ConnectorGenerator($config);
 
         // Register additional generators and post processors
         $this->registerGenerators($additionalGenerators);
@@ -85,10 +81,10 @@ class CodeGenerator
         // TODO: Pre-processors if needed in the future
 
         $generatedCode = new GeneratedCode(
-            requestClasses: $this->requestGenerator->generate($specification),
-            resourceClasses: $this->resourceGenerator->generate($specification),
-            dtoClasses: $this->dtoGenerator->generate($specification),
-            connectorClass: $this->connectorGenerator->generate($specification),
+            requestClasses: $this->requestGenerator?->generate($specification) ?? [],
+            dtoClasses: $this->dtoGenerator?->generate($specification) ?? [],
+            resourceClasses: $this->resourceGenerator?->generate($specification) ?? [],
+            connectorClass: $this->connectorGenerator?->generate($specification),
             additionalFiles: $this->runGenerators($specification),
         );
 

@@ -20,6 +20,9 @@ class Endpoint
         public ?string $collection,
         public ?array $response,
 
+        /** Schema name for success response (e.g. postedBillingPayment) for responseFormat, null if no content */
+        public ?string $responseSchemaName = null,
+
         public ?string $description = null,
 
         public array $queryParameters = [],

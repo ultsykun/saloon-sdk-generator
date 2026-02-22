@@ -106,7 +106,7 @@ class NameHelper
             ->replace('/', ' ')
             ->replace('-', ' ')
             ->replace('_', ' ')
-            ->slug(' ')
+            ->replaceMatches('/[^a-zA-Z0-9]/', ' ')
             ->ltrim('0..9')
             ->squish()
             ->trim();

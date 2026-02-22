@@ -39,8 +39,8 @@ class PostmanCollectionParser implements Parser
             description: $this->postmanCollection->info->description,
             baseUrl: new BaseUrl($baseUrlVariable?->value ?: ''),
             securityRequirements: [],
-            components: null,
-            endpoints: $this->parseItems($this->postmanCollection->item)
+            endpoints: $this->parseItems($this->postmanCollection->item),
+            components: null
         );
     }
 
