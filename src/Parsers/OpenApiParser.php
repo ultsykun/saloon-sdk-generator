@@ -2,6 +2,7 @@
 
 namespace Crescat\SaloonSdkGenerator\Parsers;
 
+use cebe\openapi\DocumentContextInterface;
 use cebe\openapi\Reader;
 use cebe\openapi\ReferenceContext;
 use cebe\openapi\spec\Components;
@@ -29,7 +30,10 @@ use Crescat\SaloonSdkGenerator\Data\Generator\SecuritySchemeType;
 use Crescat\SaloonSdkGenerator\Data\Generator\ServerParameter;
 use Crescat\SaloonSdkGenerator\Helpers\BodySchemaNameGenerator;
 use Crescat\SaloonSdkGenerator\Helpers\NameHelper;
+use Crescat\SaloonSdkGenerator\Services\OpenApi20To30Converter;
+use cebe\openapi\json\JsonPointer;
 use Illuminate\Support\Str;
+use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 class OpenApiParser implements Parser
@@ -47,11 +51,52 @@ class OpenApiParser implements Parser
 
     public static function build($content, Config $config): self
     {
-        $openApi = Str::endsWith($content, '.json')
-            ? Reader::readFromJsonFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE)
-            : Reader::readFromYamlFile(fileName: realpath($content), resolveReferences: ReferenceContext::RESOLVE_MODE_INLINE);
+        $contentPath = realpath($content);
+        if ($contentPath === false) {
+            throw new \InvalidArgumentException("File not found: {$content}");
+        }
+
+        $raw = file_get_contents($contentPath);
+        if ($raw === false) {
+            throw new \RuntimeException("Failed to read file: {$content}");
+        }
+
+        $data = Str::endsWith(strtolower($contentPath), '.json')
+            ? json_decode($raw, true)
+            : Yaml::parse($raw);
+
+        if (! is_array($data)) {
+            throw new \RuntimeException('Invalid API specification: could not decode.');
+        }
+
+        if (OpenApi20To30Converter::isOpenApi20($data)) {
+            $converter = new OpenApi20To30Converter();
+            $data = $converter->convert($data);
+        }
+
+        $openApi = self::createOpenApiFromArray($data);
 
         return new self($openApi, $config);
+    }
+
+    /**
+     * Create OpenApi spec object from array (no filesystem). Applies reference context and resolution in memory.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected static function createOpenApiFromArray(array $data): OpenApi
+    {
+        $openApi = new OpenApi($data);
+        $context = new ReferenceContext($openApi, 'php://memory');
+        $openApi->setReferenceContext($context);
+        if ($openApi instanceof DocumentContextInterface) {
+            $openApi->setDocumentContext($openApi, new JsonPointer(''));
+        }
+
+        $context->mode = ReferenceContext::RESOLVE_MODE_INLINE;
+        $openApi->resolveReferences();
+
+        return $openApi;
     }
 
     public function parse(): ApiSpecification
