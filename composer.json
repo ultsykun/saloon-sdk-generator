@@ -51,6 +51,6 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "bin": [
-        "builds/sdkgenerator"
+        "codegen"
     ]
 }
