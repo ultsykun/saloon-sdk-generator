@@ -24,11 +24,11 @@
         "nunomaduro/termwind": "^1.15.1|^2.0",
         "saloonphp/laravel-plugin": "^3.2",
         "saloonphp/saloon": "^3.0",
-        "spatie/laravel-data": "^3.10"
+        "spatie/laravel-data": "^3.10",
+        "laravel-zero/framework": "^10.3.0",
+        "laravel/pint": "^1.13"
     },
     "require-dev": {
-        "laravel-zero/framework": "^10.3.0",
-        "laravel/pint": "^1.13",
         "mockery/mockery": "^1.5.1",
         "pestphp/pest": "^2.28.0"
     },
