@@ -22,7 +22,7 @@ class GenerateSdk extends Command
                             {path : Path to the API specification file to generate the SDK from, must be a local file}
                             {--type=openapi : The type of API Specification (postman, openapi)}
                             {--name= : The model name of the SDK, default taken from tags or titles. Cashiering example}
-                            {--namespace=Azds\\Sdk : The root namespace of the SDK}
+                            {--namespace= : Azds\\Sdk : The root namespace of the SDK}
                             {--composer-name= : The root composer namespace of the SDK,  example azds/vendor1 }
                             {--config= : Config file config.yaml}
                             {--output=./build : The output path where the code will be created, will be created if it does not exist.}
@@ -32,6 +32,8 @@ class GenerateSdk extends Command
                             {--pest : Generate Pest test suites for each resource}';
 
     protected $description = 'Generate an SDK based on an API specification file.';
+
+    protected Config $config;
 
     public function handle(): void
     {
@@ -51,7 +53,7 @@ class GenerateSdk extends Command
             $this->option('config') ? $this->loadConfiguration($this->option('config')) : [],
         );
 
-        $config = new Config(
+        $this->config = $config = new Config(
             moduleName: $this->option('name') ?? ($configuration['name'] ?? null),
             namespace: $this->option('namespace') ?? $configuration['namespace'],
             composerName: $this->option('composer-name') ?? ($configuration['composerName'] ?? null),
@@ -210,7 +212,7 @@ class GenerateSdk extends Command
         $wip = sprintf(
             '%s/src/%s/%s.php',
             $this->option('output'),
-            str_replace($this->option('namespace'), '', Arr::first($file->getNamespaces())->getName()),
+            str_replace($this->config->namespace, '', Arr::first($file->getNamespaces())->getName()),
             Arr::first($file->getClasses())?->getName(),
         );
 

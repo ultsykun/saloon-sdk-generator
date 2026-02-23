@@ -52,6 +52,10 @@ class ComposerGenerator implements PostProcessor
 
     protected function generatePackageName(Config $config, ApiSpecification $specification): string
     {
+        if ($config->composerName) {
+            return $config->composerName;
+        }
+
         $namespaceParts = explode('\\', $config->namespace);
 
         // Normalize vendor and package names for Composer

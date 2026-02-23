@@ -110,10 +110,11 @@ class DtoGenerator extends Generator
         $classType
             ->setComment($schema->title ?? '')
             ->addComment('')
-            ->addComment(Utils::wrapLongLines($schema->description ?? ''));
+            ->addComment(Utils::wrapLongLines($schema->description ?? ''))
+            ->addAttribute(Data::class);
 
+        $namespace->addUse(Data::class);
         $classConstructor = $classType->addMethod('__construct');
-
 
         foreach ($properties as $propertyName => $propertySpec) {
             $attributeOptions = [];
@@ -216,7 +217,6 @@ class DtoGenerator extends Generator
 
             if ($attributeOptions) {
                 $property->addAttribute(Data::class, $attributeOptions);
-                $namespace->addUse(Data::class);
             }
 
             if (null !== $propDocCommentType) {
