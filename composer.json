@@ -1,6 +1,6 @@
 {
-    "name": "crescat-io/saloon-sdk-generator",
-    "description": "Simplified SDK Scaffolding for Saloon",
+    "name": "azds/saloon-sdk-generator",
+    "description": "Fork Simplified SDK Scaffolding for Saloon",
     "keywords": [
         "sdk generator",
         "saloon"
@@ -36,56 +36,6 @@
         "psr-4": {
             "Crescat\\SaloonSdkGenerator\\": "src/"
         }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Tests\\": "tests/"
-        }
-    },
-    "scripts": {
-        "build": "php ./codegen app:build sdkgenerator --build-version=1.4.2",
-        "clean": "rm -rf ./tests/Output/*",
-        "generate:fiken": "./codegen generate:sdk --force --namespace=Crescat\\\\Fiken --type=openapi --name=Fiken tests/Samples/fiken.yaml --output tests/Output/Fiken --pest",
-        "generate:gocardless": "./codegen generate:sdk --force --namespace=Crescat\\\\GoCardless --type=openapi --name=GoCardless tests/Samples/gocardless.json --output tests/Output/GoCardless --pest",
-        "generate:openai": "./codegen generate:sdk --force --namespace=Crescat\\\\OpenAI --type=postman --name=OpenAI tests/Samples/openai.json --output tests/Output/Openai --pest",
-        "generate:paddle-postman": "./codegen generate:sdk --force --namespace=Crescat\\\\Paddle --type=postman --name=Paddle tests/Samples/paddle.json --output tests/Output/PaddlePostman --pest",
-        "generate:paddle-openapi": "./codegen generate:sdk --force --namespace=Crescat\\\\Paddle --type=openapi --name=Paddle tests/Samples/paddle-openapi.yaml --output tests/Output/Paddle --pest",
-        "generate:paddle-billing": "./codegen generate:sdk --force --namespace=Crescat\\\\Paddle --type=openapi --name=Paddle tests/Samples/paddle-billing.yaml --output tests/Output/PaddleBilling",
-        "generate:stripe": "./codegen generate:sdk --force --namespace=Crescat\\\\Stripe --type=postman --name=Stripe tests/Samples/stripe.json --output tests/Output/Stripe --pest",
-        "generate:tableau": "./codegen generate:sdk --force --namespace=Crescat\\\\Tableau --type=postman --name=Tableau tests/Samples/tableau.json --output tests/Output/Tableau --pest",
-        "generate:tripletex": "./codegen generate:sdk --force --namespace=Crescat\\\\Tripletex --type=openapi --name=Tripletex tests/Samples/tripletex.converted.json --output tests/Output/Tripletex --pest",
-        "generate:checkmango": "./codegen generate:sdk --force --namespace=Checkmango\\\\Sdk --type=openapi --name=Checkmango tests/Samples/checkmango.json --output tests/Output/Checkmango --pest",
-        "generate:kassalapp": "./codegen generate:sdk --force --namespace=Kassalapp\\\\Sdk --type=openapi --name=Kassalapp tests/Samples/kassalapp.json --output tests/Output/Kassalapp --pest",
-        "generate:altinn": "./codegen generate:sdk --force --namespace=Altinn\\\\Sdk --type=postman --name=Altinn tests/Samples/altinn.json --output tests/Output/Altinn --pest",
-        "generate:crescat": "./codegen generate:sdk --force --namespace=Crescat\\\\Sdk --type=openapi --name=Crescat tests/Samples/crescat.yaml --output tests/Output/Crescat --pest",
-        "generate:bigcommerce": "./codegen generate:sdk --force --namespace=BigCommerce\\\\Sdk --type=openapi --name=BigCommerce tests/samples/bigcommerce_abandoned_carts.v3.yml --output tests/Output/BigCommerce --pest",
-        "generate:vegvesen": "./codegen generate:sdk --force --namespace=Vegvesen\\\\Sdk --type=openapi --name=Vegvesen tests/samples/vegvesen.json --output tests/Output/Vegvesen --pest",
-        "generate:spotify": "./codegen generate:sdk --force --namespace=Spotify\\\\Sdk --type=openapi --name=Spotify tests/samples/spotify.yml --output tests/Output/Spotify --pest",
-        "generate:drive": "./codegen generate:sdk --force --namespace=Drive\\\\Sdk --type=openapi --name=Drive tests/samples/drive.json --output tests/Output/Drive --pest",
-        "generate:headers-test": "./codegen generate:sdk --force --namespace=HeadersTest\\\\Sdk --type=openapi --name=HeadersTest tests/Samples/test-headers-api.yml --output tests/Output/HeadersTest",
-        "generate:nested-refs": "./codegen generate:sdk --force --namespace=NestedRefs\\\\Sdk --type=openapi --name=NestedRefs tests/Samples/nested-refs.yml --output tests/Output/NestedRefs",
-        "generate:docuseal": "./codegen generate:sdk --force --namespace=Docuseal\\\\Sdk --type=openapi --name=Docuseal tests/Samples/docuseal.yml --output tests/Output/Docuseal --pest",
-        "generate:all": [
-            "@generate:fiken",
-            "@generate:gocardless",
-            "@generate:openai",
-            "@generate:paddle-postman",
-            "@generate:paddle-openapi",
-            "@generate:paddle-billing",
-            "@generate:tableau",
-            "@generate:tripletex",
-            "@generate:stripe",
-            "@generate:checkmango",
-            "@generate:kassalapp",
-            "@generate:crescat",
-            "@generate:bigcommerce",
-            "@generate:headers-test",
-            "@generate:nested-refs",
-            "@generate:docuseal"
-        ],
-        "test": "vendor/bin/pest tests/Feature tests/Unit tests/ArchTest.php",
-        "test-coverage": "vendor/bin/pest --coverage",
-        "format": "vendor/bin/pint"
     },
     "config": {
         "preferred-install": "dist",

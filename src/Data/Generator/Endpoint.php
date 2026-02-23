@@ -23,6 +23,8 @@ class Endpoint
         /** Schema name for success response (e.g. postedBillingPayment) for responseFormat, null if no content */
         public ?string $responseSchemaName = null,
 
+        public ?Parameter $responseParameter = null,
+
         public ?string $description = null,
 
         public array $queryParameters = [],
@@ -41,6 +43,7 @@ class Endpoint
             ...$this->bodyParameters,
             ...$this->queryParameters,
             ...$this->headerParameters,
+            ...(null !== $this->responseParameter ? [$this->responseParameter] : [])
         ];
     }
 

@@ -25,20 +25,14 @@ class BodySchemaNameGenerator
         }
     }
 
-    /**
-     * Generate a unique name for a request body schema.
-     *
-     * @param  array<string>  $pathSegments  URL path segments (e.g. ['clients', '{code}', 'widgets', '{widgetCode}', 'appointments'])
-     * @param  string  $method  HTTP method (get, post, put, patch, delete)
-     * @return string Unique schema name (e.g. appointmentRequest, appointmentPutRequest, widgetAppointmentRequest)
-     */
-    public function generate(array $pathSegments, string $method): string
+    public function generate(array $pathSegments, string $method, string $suffix = ''): string
     {
-        $pathSegments = array_values(array_filter($pathSegments, fn ($s) => !preg_match('/^[:{]|^id|^code/i', (string) $s) ));
+        $pathSegments = array_values(array_filter($pathSegments, fn ($s) => !preg_match('/^[:{]|^id|^code|^v[0-9]+/i', (string) $s) ));
 
-        $baseName = $this->baseNameFromPath($pathSegments); // e.g. "appointment"
-        $methodSuffix = $this->methodSuffix($method);       // e.g. "" for POST, "Put" for PUT
-        $candidate = $baseName . $methodSuffix . 'Request'; // appointmentRequest, appointmentPutRequest
+        $baseName = $this->baseNameFromPath($pathSegments);
+        $methodSuffix = ($suffix === 'Request' || $suffix === 'Response') ? $this->methodSuffix($method) : Str::studly($method);
+
+        $candidate = $this->getCandidateName($baseName, $methodSuffix, $suffix);
 
         if (! $this->isUsed($candidate)) {
             $this->usedNames[strtolower($candidate)] = true;
@@ -46,17 +40,26 @@ class BodySchemaNameGenerator
             return $candidate;
         }
 
-        // Collision: prefix with path context (e.g. widgetAppointmentRequest)
         $pathPrefix = $this->pathPrefix($pathSegments);
-        $candidate = $pathPrefix . ucfirst($baseName) . $methodSuffix . 'Request';
+        $candidate = $this->getCandidateName($pathPrefix . ucfirst($baseName), $methodSuffix, $suffix);
         $counter = 0;
+
         while ($this->isUsed($candidate)) {
-            $candidate = $pathPrefix . ucfirst($baseName) . $methodSuffix . 'Request' . (++$counter > 1 ? (string) $counter : '');
+            $candidate = $this->getCandidateName($pathPrefix . ucfirst($baseName), $methodSuffix, $suffix . (++$counter > 1 ? (string) $counter : ''));
         }
 
         $this->usedNames[strtolower($candidate)] = true;
 
         return $candidate;
+    }
+
+    protected function getCandidateName($baseName, $methodSuffix, $suffix): string
+    {
+        if ($suffix === '') {
+            return $methodSuffix . ucfirst($baseName);
+        }
+
+        return $baseName . $methodSuffix . $suffix;
     }
 
     protected function isUsed(string $name): bool

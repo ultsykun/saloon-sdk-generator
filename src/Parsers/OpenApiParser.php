@@ -67,7 +67,7 @@ class OpenApiParser implements Parser
             name: $this->openApi->info->title,
             description: $this->openApi->info->description,
             baseUrl: $this->parseBaseUrl($this->openApi->servers),
-            securityRequirements: $this->openApi->security !== null ? $this->parseSecurityRequirements(($this->openApi->security[0] ?? null)?->getSerializableData()) : [],
+            securityRequirements: [],
             endpoints: $endpoints,
             components: $this->parseComponents($this->openApi->components),
             moduleName: $this->parseModuleName(),
@@ -214,14 +214,15 @@ class OpenApiParser implements Parser
     protected function parseEndpoint(Operation $operation, $pathParams, string $path, string $method): ?Endpoint
     {
         $pathSegments = Str::of($path)->replace('{', ':')->remove('}')->trim('/')->explode('/')->toArray();
+        $name = trim($operation->operationId ?: $this->bodySchemaNameGenerator->generate($pathSegments, $method));
 
         return new Endpoint(
-            name: trim($operation->operationId ?: $operation->summary ?: ''),
+            name: $name,
             method: Method::parse($method),
             pathSegments: $pathSegments,
             collection: $operation->tags[0] ?? null, // In the real-world, people USUALLY only use one tag...
             response: null,
-            responseSchemaName: $this->parseSuccessResponseSchemaName($operation),
+            responseParameter: $this->parseSuccessResponseSchemaName($operation, $name, $pathSegments, $method),
             description: $operation->description,
             queryParameters: $this->mapParams($operation->parameters ?? [], 'query'),
             // TODO: Check if this differs between spec versions
@@ -319,7 +320,7 @@ class OpenApiParser implements Parser
 
         // Inline schema (type: object with properties) -> add to bodySchemas and one Parameter
         if ($schema instanceof Schema && ($schema->type === 'object' || isset($schema->properties)) && ! empty($schema->properties ?? [])) {
-            $schemaName = $this->bodySchemaNameGenerator->generate($pathSegments, $method);
+            $schemaName = $this->bodySchemaNameGenerator->generate($pathSegments, $method, 'Request');
             $this->bodySchemas[$schemaName] = $schema;
 
             $dtoType = NameHelper::dtoClassName(NameHelper::safeClassName($schemaName));
@@ -348,6 +349,7 @@ class OpenApiParser implements Parser
         if ($schema instanceof Reference) {
             return $this->getSchemaNameFromRef($schema);
         }
+
         if ($schema instanceof Schema && ! empty($schema->allOf)) {
             $first = $schema->allOf[0] ?? null;
             if ($first instanceof Reference) {
@@ -358,11 +360,20 @@ class OpenApiParser implements Parser
         return null;
     }
 
+    protected function generateMethodName()
+    {
+
+    }
+
     /**
      * Parse success response (first 2xx) and return schema name for response content, or null if empty.
      */
-    protected function parseSuccessResponseSchemaName(Operation $operation): ?string
+    protected function parseSuccessResponseSchemaName(Operation $operation, string $methodName, array $pathSegments, string $method): ?Parameter
     {
+        if (strtolower($methodName) === 'getappointment') {
+            $t = 1;
+        }
+
         $responses = $operation->responses ?? null;
         if (! $responses) {
             return null;
@@ -406,7 +417,32 @@ class OpenApiParser implements Parser
             return null;
         }
 
-        return $this->resolveRefSchemaName($schema);
+        $dtoType = $this->resolveRefSchemaName($schema);
+
+        if (null === $dtoType && $schema instanceof Schema) {
+
+            $methodName = trim($operation->operationId ?  $operation->operationId . 'Response' : $this->bodySchemaNameGenerator->generate($pathSegments, $method, 'Response'));
+
+            $requestClassName = lcfirst(NameHelper::resourceClassName($methodName));
+            $baseMethodName = NameHelper::safeVariableName($requestClassName);
+
+            if (!isset($this->bodySchemas[$baseMethodName])) {
+                $this->bodySchemas[$baseMethodName] = $schema;
+                $dtoType = $baseMethodName;
+            }
+        }
+
+        if (null === $dtoType) {
+            return null;
+        }
+
+        return new Parameter(
+            type: $dtoType,
+            nullable: false,
+            name: $dtoType,
+            description: $response->description ?? '',
+            isDto: true,
+        );
     }
 
     /**

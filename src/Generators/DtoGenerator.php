@@ -36,17 +36,13 @@ class DtoGenerator extends Generator
 
         if ($specification->components) {
             foreach ($specification->components->schemas as $className => $schema) {
-                if ($schema instanceof Reference) {
-                    $schema = $schema->resolveReferences();
-                }
-
                 if (!$schema instanceof Schema) {
                     continue;
                 }
 
                 $classLike = $this->generateDtoClass(NameHelper::safeClassName($className), $schema);
 
-                $specification->dtoClassesMap[strtolower($className)] = $classLike?->getFullName();
+                $specification->dtoClassesMap[strtolower($className)] ??= $classLike?->getFullName();
             }
         }
 
@@ -65,7 +61,9 @@ class DtoGenerator extends Generator
                     continue;
                 }
 
-                $param->classFQN = $this->specification->dtoClassesMap[strtolower($param->type)] ?? null;
+                $classFQN = $this->specification->dtoClassesMap[strtolower($param->type)] ?? null;
+
+                $param->classFQN = $classFQN;
             }
         }
     }
@@ -89,11 +87,21 @@ class DtoGenerator extends Generator
             return $enumClass;
         }
 
-        /** @var Schema[] $properties */
-        $properties = $schema->properties ?? [];
+        $properties = $this->getAllProperties($schema);
         $schemaType = $this->convertOpenApiTypeToPhp($schema);
 
         if ($schemaType === 'array' && count($properties) === 0) {
+            $entrySchema = $schema->items;
+
+            if ($entrySchema instanceof Schema) {
+                $classLike = $this->generateDtoClass($className, $entrySchema);
+                if (null !== $classLike) {
+                    $this->specification->dtoClassesMap[strtolower($className)] = $classLike->getFullName() . '[]';
+                }
+
+                return $classLike;
+            }
+
             return null;
         }
 
@@ -106,8 +114,6 @@ class DtoGenerator extends Generator
 
         $classConstructor = $classType->addMethod('__construct');
 
-        $generatedMappings = false;
-        $referencedDtos = [];
 
         foreach ($properties as $propertyName => $propertySpec) {
             $attributeOptions = [];
@@ -124,32 +130,21 @@ class DtoGenerator extends Generator
                 $attributeOptions['type'] = $openApiType;
             }
 
-            $propDocCommentType = null;
+            $propDocCommentType = $entryRef = null;
             // Check if this is a reference to another schema
             if ($propertySpec instanceof Reference) {
                 $refSpecType = isset($this->schemas[$type]) ? $this->convertOpenApiTypeToPhp($this->schemas[$type]) : null;
 
                 if ($refSpecType === 'array') {
                     $entryRef = $this->schemas[$type]->items;
-                    $entryRefType = null !== $entryRef ? $this->convertOpenApiTypeToPhp($entryRef) : null;
 
                     $type = 'array';
-                    if ($entryRef instanceof Reference && $entryRefType !== null && isset($this->schemas[$entryRefType])) {
-                        $entryRefTypeSub = NameHelper::dtoClassName($entryRefType);
-
-                        $entryType = $this->getClassFQN($entryRefTypeSub);
-                        $attributeOptions['entryType'] = $entryType;
-
-                        $propDocCommentType = $entryRefTypeSub . '[]|null';
-                    }
-
                 } else {
                     $schemaName = $type;
                     $dtoClassName = NameHelper::dtoClassName($schemaName);
                     // Use the FQN for the type
                     $type = $this->getClassFQN($dtoClassName);
                     // Track referenced DTOs
-                    $referencedDtos[] = $dtoClassName;
                 }
             }
 
@@ -163,12 +158,42 @@ class DtoGenerator extends Generator
                     $sub = isset($this->schemas[$sub]) || isset($this->generated[$sub]) ? $sub1 : $sub;
 
                     $classLike = $this->generateDtoClass($sub, $propertySpec);
-                    $this->specification->dtoClassesMap[$sub] = $classLike?->getName();
+                    $this->specification->dtoClassesMap[strtolower($sub)] = $classLike?->getFullName();
 
                     $this->generatedByHash[$hash] = $this->getClassFQN($sub);
                 }
 
                 $type = $this->generatedByHash[$hash] ?? $type;
+
+                    if ($type === 'array' && $propertySpec instanceof Schema && null !== $propertySpec->items instanceof Reference) {
+                    $entryRef = $propertySpec->items;
+                }
+            }
+
+            $entryRefType = null !== $entryRef ? $this->convertOpenApiTypeToPhp($entryRef) : null;
+
+            /*
+                "oneOf": [
+                    { "$ref": "#/components/schemas/PaymentMethodUpg" },
+                    { "$ref": "#/components/schemas/Search" }
+                ]
+             */
+            if ($entryRefType === 'mixed' && $entryRef instanceof Schema) {
+                $sub = NameHelper::dtoClassName($className . ucfirst($propertyName) . 'All');
+
+                $classLike = $this->generateDtoClass($sub, $entryRef);
+                $this->specification->dtoClassesMap[strtolower($sub)] = $classLike?->getFullName();
+
+                $entryRefType = $sub;
+            }
+
+            if (isset($this->schemas[$entryRefType]) || isset($this->specification->dtoClassesMap[strtolower($entryRefType)])) {
+                $entryRefTypeSub = NameHelper::dtoClassName($entryRefType);
+
+                $entryType = $this->getClassFQN($entryRefTypeSub);
+                $attributeOptions['entryType'] = $entryType;
+
+                $propDocCommentType = $entryRefTypeSub . '[]|null';
             }
 
             $property = $classConstructor->addPromotedParameter($name)
@@ -204,6 +229,46 @@ class DtoGenerator extends Generator
         $this->generated[$dtoName] = $classFile;
 
         return $classType;
+    }
+
+    /**
+     * @return Schema[]
+     */
+    protected function getAllProperties(Schema $schema, array &$visited = []): array
+    {
+        $properties = $schema->properties ?? [];
+        if (!empty($properties)) {
+            return $properties;
+        }
+
+        $allOf = $schema->allOf ?? $schema->oneOf;
+        if (!$allOf) {
+            return [];
+        }
+
+        $result = [];
+
+        $visited = [];
+        foreach ($allOf as $propSchema) {
+            if ($propSchema instanceof Reference) {
+                $propSchema = Str::afterLast($propSchema->getReference(), '/');
+                $propSchema = $this->schemas[$propSchema] ?? null;
+            }
+
+            if (!$propSchema instanceof Schema) {
+                continue;
+            }
+
+            $hash = spl_object_hash($propSchema);
+            if (isset($visited[$hash])) {
+                continue;
+            }
+
+            $visited[$hash] = 1;
+            $result = array_merge($result, $this->getAllProperties($propSchema, $visited));
+        }
+
+        return $result;
     }
 
     protected function generateDtoEnum(string $dtoName, Schema $schema): EnumType
@@ -253,7 +318,9 @@ class DtoGenerator extends Generator
 
     protected function generateGetMethod(ClassType $class, string $name, string $type, ?string $propDocCommentType): void
     {
-        $method = $class->addMethod('get' . ucfirst($name));
+        $prefix = $type === 'bool' && preg_match('/^has|^is/i', $name) ? '' : 'get';
+
+        $method = $class->addMethod(lcfirst($prefix . ucfirst($name)));
 
         $method
             ->setReturnNullable()

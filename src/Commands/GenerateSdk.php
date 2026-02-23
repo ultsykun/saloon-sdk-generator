@@ -208,23 +208,16 @@ class GenerateSdk extends Command
 
         // TODO: Cleanup this, brittle and will break if you change the namespace
         $wip = sprintf(
-            '%s/%s/%s.php',
+            '%s/src/%s/%s.php',
             $this->option('output'),
             str_replace($this->option('namespace'), '', Arr::first($file->getNamespaces())->getName()),
             Arr::first($file->getClasses())?->getName(),
         );
 
-        // TODO: cleanup
         $filePath = $overrideFilePath ?? Str::of($wip)->replace('\\', '/')->replace('//', '/')->toString();
 
         if (! file_exists(dirname($filePath))) {
             mkdir(dirname($filePath), recursive: true);
-        }
-
-        if (file_exists($filePath) && ! $this->option('force')) {
-            $this->warn("- File already exists: $filePath");
-
-            return;
         }
 
         $ok = file_put_contents($filePath, (string) $file);

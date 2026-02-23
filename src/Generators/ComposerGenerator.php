@@ -25,11 +25,13 @@ class ComposerGenerator implements PostProcessor
             'name' => $this->generatePackageName($config, $specification),
             'description' => "{$specification->name} SDK",
             'type' => 'library',
+            'authors' => [
+                ['name' => 'AZDS', 'homepage' => 'https://www.azds.com/']
+            ],
             'require' => [
                 'php' => '>=8.1',
                 'azds/data-transfer' => '*'
             ],
-            'require-dev' => $this->getDevDependencies(),
             'autoload' => [
                 'psr-4' => [
                     "{$config->namespace}\\" => 'src/',
@@ -64,22 +66,5 @@ class ComposerGenerator implements PostProcessor
     {
         // Convert to lowercase and replace spaces/underscores with hyphens
         return strtolower(str_replace(['_', ' '], '-', $value));
-    }
-
-    protected function getDevDependencies(): array
-    {
-        if ($this->pestEnabled) {
-            return [
-                'pestphp/pest' => '^2.0',
-                'orchestra/testbench' => '^8.0|^9.0',
-                'saloonphp/laravel-plugin' => '^3.0',
-                'spatie/laravel-data' => '^3.0|^4.0',
-                'vlucas/phpdotenv' => '^5.6',
-            ];
-        }
-
-        return [
-            'phpunit/phpunit' => '^10.0|^11.0',
-        ];
     }
 }

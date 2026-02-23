@@ -211,11 +211,15 @@ TXT;
 
         $responseFormatArg = 'null';
 
-        if ($endpoint->responseSchemaName !== null) {
-            $responseFqn = $this->dtoFqn($endpoint->collection ?? $this->config->fallbackResourceName, $endpoint->responseSchemaName);
-            $responseShort = Str::afterLast($responseFqn, '\\');
-            $namespace->addUse($responseFqn);
-            $responseFormatArg = "{$responseShort}::class";
+        if ($endpoint->responseParameter?->classFQN !== null) {
+            $param1 = $endpoint->responseParameter;
+
+            $namespace->addUse($param1->getClassFQN());
+            $responseFormatArg = $param1->getClassFQNFormatArg();
+
+            $syncMethod->setReturnType($param1->getClassFQNReturnType());
+        } else {
+            $syncMethod->setReturnType('mixed');
         }
 
         $httpMethod = $endpoint->method->value;
@@ -234,15 +238,6 @@ TXT;
 
         $asyncMethod->setBody(new Literal($body));
 
-
-        if ($endpoint->responseSchemaName) {
-            $responseFqn = $this->dtoFqn($endpoint->collection ?? $this->config->fallbackResourceName, $endpoint->responseSchemaName);
-            $syncMethod->setReturnType($responseFqn);
-            $namespace->addUse($responseFqn);
-        } else {
-            $syncMethod->setReturnType('mixed');
-        }
-
         foreach ($allParams as $parameter) {
             $this->addParameterToMethod($syncMethod, $parameter, $namespace);
         }
@@ -251,16 +246,20 @@ TXT;
 return \$this->$asyncMethodName(...func_get_args())->wait();
 TXT
 ));
+
+        if ($endpoint->responseParameter?->isClassFQNIterable()) {
+            $syncMethod
+                ->addComment(trim(sprintf('@return %s', $endpoint->responseParameter->getClassFQNDocsType())));
+        }
     }
 
     protected function addParameterToMethod(Method $method, Parameter $parameter, PhpNamespace $namespace, bool $printDocsBlock = true): Method
     {
         $name = NameHelper::safeVariableName($parameter->name);
-        $docType = $type = $parameter->classFQN ?? $parameter->type;
+        $docType = $type = $parameter->getClassFQNReturnType() ?? $parameter->type;
 
-        if (null !== $parameter->classFQN) {
-            $classFQN = explode("\\", $parameter->classFQN);
-            $docType = end($classFQN);
+        if (null !== $parameter->getClassFQN()) {
+            $docType = $parameter->getClassFQNDocsType();
         }
 
         $param = $method
@@ -273,9 +272,9 @@ TXT
                 ->addComment(trim(sprintf('@param %s $%s %s', $docType, $name, $parameter->description)));
         }
 
-        if (null !== $parameter->classFQN) {
+        if (null !== $parameter->getClassFQN()) {
             $namespace
-                ->addUse($parameter->classFQN);
+                ->addUse($parameter->getClassFQN());
         }
 
         if ($parameter->nullable) {
