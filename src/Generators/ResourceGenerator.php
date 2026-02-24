@@ -215,7 +215,7 @@ TXT;
             $param1 = $endpoint->responseParameter;
 
             $namespace->addUse($param1->getClassFQN());
-            $responseFormatArg = $param1->getClassFQNFormatArg();
+            $responseFormatArg = array_flip($namespace->getUses())[$param1->getClassFQN()] . '::class';
 
             $syncMethod->setReturnType($param1->getClassFQNReturnType());
         } else {
