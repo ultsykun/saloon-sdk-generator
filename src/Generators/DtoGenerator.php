@@ -348,7 +348,7 @@ class DtoGenerator extends Generator
         return sha1(json_encode($result));
     }
 
-    protected function convertOpenApiTypeToPhp(Schema|Reference $schema)
+    protected function convertOpenApiTypeToPhp(Schema|Reference &$schema)
     {
         if ($schema instanceof Reference) {
             return Str::afterLast($schema->getReference(), '/');
@@ -365,6 +365,7 @@ class DtoGenerator extends Generator
         if (isset($schema->allOf[0]) && !isset($schema->allOf[1])) {
             $reference = $schema->allOf[0];
             if ($reference instanceof Reference) {
+                $schema = $reference;
                 return Str::afterLast($reference->getReference(), '/');
             }
         }
