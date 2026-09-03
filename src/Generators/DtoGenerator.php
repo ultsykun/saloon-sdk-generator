@@ -362,6 +362,13 @@ class DtoGenerator extends Generator
             return $this->mapType($schema->type, $schema->format);
         }
 
+        if (isset($schema->allOf[0]) && !isset($schema->allOf[1])) {
+            $reference = $schema->allOf[0];
+            if ($reference instanceof Reference) {
+                return Str::afterLast($reference->getReference(), '/');
+            }
+        }
+
         return 'mixed';
     }
 
